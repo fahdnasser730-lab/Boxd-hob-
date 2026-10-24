@@ -1,0 +1,42 @@
+IMPORTANT: Paste these rules in Firebase Console > Firestore Database > Rules, then press Publish.
+These rules allow public reading of posts and profile names, while only signed-in users can create posts as themselves and only the post author can edit/delete their own posts. Do not add admin privileges based on a username.
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId} {
+      allow read: if true;
+      allow create: if request.auth != null
+                    && request.auth.uid == userId
+                    && request.resource.data.keys().hasOnly(['name', 'email', 'logo', 'createdAt'])
+                    && request.resource.data.name is string
+                    && request.resource.data.name.size() >= 3
+                    && request.resource.data.name.size() <= 24
+                    && request.resource.data.email == request.auth.token.email;
+      allow update: if request.auth != null
+                    && request.auth.uid == userId
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['logo', 'name']);
+      allow delete: if false;
+    }
+    match /posts/{postId} {
+      allow read: if true;
+      allow create: if request.auth != null
+                    && request.resource.data.authorUid == request.auth.uid
+                    && request.resource.data.author == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.name
+                    && request.resource.data.keys().hasOnly(['author', 'authorUid', 'text', 'link', 'likes', 'comments', 'createdAt'])
+                    && request.resource.data.text is string
+                    && request.resource.data.text.size() <= 3000
+                    && request.resource.data.link is string
+                    && request.resource.data.likes == 0
+                    && request.resource.data.comments == [];
+      allow update: if request.auth != null
+                    && resource.data.authorUid == request.auth.uid
+                    && request.resource.data.authorUid == resource.data.authorUid
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'link', 'likes', 'comments']);
+      allow delete: if request.auth != null && resource.data.authorUid == request.auth.uid;
+    }
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
